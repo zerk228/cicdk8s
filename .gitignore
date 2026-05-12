@@ -1,0 +1,30 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Env
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Claude / agents
+.claude/
+
+# Local compose overrides (per-developer port remaps etc.) — don't ship
+docker-compose.override.yml
+
+# Build artifacts
+dist/
+build/
+*.log
