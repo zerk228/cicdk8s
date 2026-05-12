@@ -71,31 +71,42 @@ jobs:
     if: needs.check-secrets.outputs.has-kubeconfig == 'true'
     defaults:
       run:
-        shell: bash
+        shell: pwsh
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Lowercase image namespace
         id: ns
-        run: echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
-      - name: Configure kubeconfig
         run: |
-          mkdir -p "$HOME/.kube"
-          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > "$HOME/.kube/config"
+          $owner = '${{ github.repository_owner }}'.ToLower()
+          "owner=$owner" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+      - name: Configure kubeconfig
+        env:
+          KUBE_CONFIG_B64: ${{ secrets.KUBE_CONFIG }}
+        run: |
+          New-Item -ItemType Directory -Force -Path "$HOME\.kube" | Out-Null
+          $bytes = [Convert]::FromBase64String($env:KUBE_CONFIG_B64)
+          [IO.File]::WriteAllBytes("$HOME\.kube\config", $bytes)
           kubectl config use-context docker-desktop
           kubectl cluster-info
       - name: Replace local image names with registry images
         run: |
-          OWNER="${{ steps.ns.outputs.owner }}"
-          SHA="${{ github.sha }}"
-          sed -i "s|sre-backend:v1|ghcr.io/${OWNER}/advanced-demo-backend:${SHA}|g" k8s/backend-deployment.yaml
-          sed -i "s|sre-frontend:v1|ghcr.io/${OWNER}/advanced-demo-frontend:${SHA}|g" k8s/frontend-deployment.yaml
-          sed -i "s|imagePullPolicy: Never|imagePullPolicy: IfNotPresent|g" k8s/backend-deployment.yaml
-          sed -i "s|imagePullPolicy: Never|imagePullPolicy: IfNotPresent|g" k8s/frontend-deployment.yaml
+          $owner = '${{ steps.ns.outputs.owner }}'
+          $sha   = '${{ github.sha }}'
+          $backendImg  = "ghcr.io/$owner/advanced-demo-backend:$sha"
+          $frontendImg = "ghcr.io/$owner/advanced-demo-frontend:$sha"
+          (Get-Content k8s/backend-deployment.yaml) `
+            -replace 'sre-backend:v1', $backendImg `
+            -replace 'imagePullPolicy: Never', 'imagePullPolicy: IfNotPresent' |
+            Set-Content k8s/backend-deployment.yaml
+          (Get-Content k8s/frontend-deployment.yaml) `
+            -replace 'sre-frontend:v1', $frontendImg `
+            -replace 'imagePullPolicy: Never', 'imagePullPolicy: IfNotPresent' |
+            Set-Content k8s/frontend-deployment.yaml
       - name: Deploy manifests
         run: |
           kubectl apply -f k8s/
-          kubectl rollout status deployment/backend --timeout=180s
+          kubectl rollout status deployment/backend  --timeout=180s
           kubectl rollout status deployment/frontend --timeout=180s
       - name: Show cluster state
         run: kubectl get all -o wide
