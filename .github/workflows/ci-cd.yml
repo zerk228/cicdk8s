@@ -66,9 +66,12 @@ jobs:
 
   deploy:
     name: Deploy to Kubernetes
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: [build-and-push, check-secrets]
     if: needs.check-secrets.outputs.has-kubeconfig == 'true'
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -77,9 +80,10 @@ jobs:
         run: echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
       - name: Configure kubeconfig
         run: |
-          mkdir -p $HOME/.kube
-          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > $HOME/.kube/config
-          chmod 600 $HOME/.kube/config
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > "$HOME/.kube/config"
+          kubectl config use-context docker-desktop
+          kubectl cluster-info
       - name: Replace local image names with registry images
         run: |
           OWNER="${{ steps.ns.outputs.owner }}"
@@ -91,5 +95,7 @@ jobs:
       - name: Deploy manifests
         run: |
           kubectl apply -f k8s/
-          kubectl rollout status deployment/backend --timeout=120s
-          kubectl rollout status deployment/frontend --timeout=120s
+          kubectl rollout status deployment/backend --timeout=180s
+          kubectl rollout status deployment/frontend --timeout=180s
+      - name: Show cluster state
+        run: kubectl get all -o wide
